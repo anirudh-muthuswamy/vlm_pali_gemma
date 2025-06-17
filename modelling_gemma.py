@@ -38,11 +38,11 @@ class KVCache():
 class GemmaConfig():
     def __init__(self,
                  vocab_size,
-                 hidden_size, 
-                 intermediate_size, 
-                 num_hidden_layers, 
-                 num_attention_heads,
-                 num_key_value_heads,
+                 hidden_size=2048, 
+                 intermediate_size=16384, 
+                 num_hidden_layers=18, 
+                 num_attention_heads=8,
+                 num_key_value_heads=1,
                  head_dim=256,
                  max_position_embeddings=8192,
                  rms_norm_eps=1e-6,
@@ -61,7 +61,7 @@ class GemmaConfig():
         self.num_attention_heads = num_attention_heads
         self.head_dim = head_dim
         self.num_key_value_heads = num_key_value_heads
-        self.rm_norm_eps = rms_norm_eps
+        self.rms_norm_eps = rms_norm_eps
         self.rope_theta = rope_theta
         self.attention_bias = attention_bias
         self.attention_dropout = attention_dropout
@@ -139,7 +139,7 @@ class GemmaRotaryEmbedding(nn.Module):
         self.base = base
 
         #calculate the theta according to the formula theta_i = base^(2i/dim) where i=0,1,2 .. dim//2
-        inv_freq = 1.0 (self.base ** (torch.arange(0, self.dim, 2, dtype=torch.int64).float()/self.dim))
+        inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2, dtype=torch.int64).float()/self.dim))
         self.register_buffer("inv_freq", tensor=inv_freq, persistent=False)
 
     @torch.no_grad()
@@ -147,7 +147,7 @@ class GemmaRotaryEmbedding(nn.Module):
         #x -> (bs, num_attn_heads, seq_len, head_dim)
         self.inv_freq.to(x.device)
         #inv_freq_expanded -> (batch_size, head_dim//2, 1)
-        inv_freq_expanded = self.inv_freq[None,:None].float().expand(position_ids.shape[0],-1, 1)
+        inv_freq_expanded = self.inv_freq[None,:, None].float().expand(position_ids.shape[0],-1, 1)
         #position_ids_expanded -> (batch_size, 1, seq_len)
         position_ids_expanded = position_ids[:, None, :].float()
         device_type = x.device.type
@@ -266,7 +266,8 @@ class GemmaAttention(nn.Module):
         return attn_output, attn_weights
     
 class GemmaDecoderLayer(nn.Module):
-    def __init(self, config:GemmaConfig, layer_idx: int):
+    def __init__(self, config:GemmaConfig, layer_idx: int):
+        super().__init__()
         self.hidden_size = config.hidden_size
         self.self_attn = GemmaAttention(config=config, layer_idx=layer_idx)
         self.mlp = GemmaMLP(config)
@@ -316,7 +317,7 @@ class GemmaMLP(nn.Module):
 class GemmaModel(nn.Module):
 
     def __init__(self, config:GemmaConfig):
-        super().__init()
+        super().__init__()
         self.config = config
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
@@ -340,7 +341,7 @@ class GemmaModel(nn.Module):
         #(batch_size, seq_len, hidden_size)
         hidden_states = input_embeds
         #(batch_size, seq_len, hidden_size)
-        normalizer = torch.Tensor(self.config.hidden_size**0.5, dtype = hidden_states.dtype)
+        normalizer = torch.tensor(self.config.hidden_size**0.5, dtype = hidden_states.dtype)
         hidden_states = hidden_states*normalizer
 
         for decoder_layer in self.layers:
@@ -359,7 +360,7 @@ class GemmaForCausalLM(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.model = GemmaConfig(config)
+        self.model = GemmaModel(config)
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
@@ -490,7 +491,7 @@ class PaliGemmaForConditionalGeneration(nn.Module):
         input_embeds = self.language_model.get_input_embeddings()(input_ids)
 
         #(batch_size, channels, height, width) -> (batch_size, num_patches, embed_dim)
-        selected_image_feature = self.vision_tower(pixel_values.to(input_embeds.type))
+        selected_image_feature = self.vision_tower(pixel_values.to(input_embeds.dtype))
         #(batch_size, num_patches, embed_dim) -> (batch_size, num_patches, hidden_size)
         image_features = self.multi_modal_projector(selected_image_feature)
 
@@ -505,7 +506,7 @@ class PaliGemmaForConditionalGeneration(nn.Module):
             attention_mask = attention_mask, 
             position_ids = position_ids,
             input_embeds = input_embeds,
-            kv_cahcha = kv_cache
+            kv_cache = kv_cache
         )
 
         return outputs

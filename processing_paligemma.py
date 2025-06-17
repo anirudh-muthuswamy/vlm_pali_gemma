@@ -121,12 +121,16 @@ class PaliGemmaProcessor:
         ]
 
         #Returns the input_ids and attention_mask as Pytorch tensors
-        input = self.tokenizer(
+        inputs = self.tokenizer(
             input_strings, 
             return_tensors = 'pt',
             padding = padding,
             truncation = truncation,
         )
+
+        return_data = {"pixel_values":pixel_values, **inputs}
+
+        return return_data
 
 
 

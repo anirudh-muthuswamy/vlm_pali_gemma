@@ -43,7 +43,6 @@ class SiglipVisionEmbeddings(nn.Module):
             out_channels=self.embed_dim,
             kernel_size=self.patch_size,
             stride=self.patch_size,
-            stride=config.patch_size,
             padding='valid', # No padding for valid convolution
         )
 
@@ -91,7 +90,7 @@ class SiglipAttention(nn.Module):
 
         #Calculate the attention weights using Q*KT/ Sqrt(d_k): [batch_size, num_heads, seq_len, seq_len]
 
-        attn_weights = torch.matmul(query_states*key_states.transpose(2, 3))/self.scale
+        attn_weights = (torch.matmul(query_states, key_states.transpose(2, 3))*self.scale)
         if attn_weights.size() != (batch_size, self.num_heads, seq_length, seq_length):
             raise ValueError(
                 f"Attention weights should be of size: {(batch_size, self.num_heads, seq_length, seq_length)}, but is"
@@ -115,6 +114,8 @@ class SiglipAttention(nn.Module):
         #[batch_size, num_patches, num_heads, head_dim] -> [batch_size, num_patches, embed_dim]
         attn_output = attn_output.reshape(batch_size, seq_length, self.embed_dim)
         attn_output = self.out_proj(attn_output)
+
+        return attn_output, attn_weights
 
 
 class SiglipMLP(nn.Module):
@@ -153,7 +154,7 @@ class SiglipEncoderLayer(nn.Module):
     
 class SiglipEncoder(nn.Module):
     def __init__(self, config: SiglipVisionConfig):
-        super.__init__()
+        super().__init__()
         self.config = config
         self.layers = nn.ModuleList(
             [SiglipEncoderLayer(config) for _ in range(config.num_hidden_layers)]
@@ -180,7 +181,7 @@ class SiglipVisionTransformer(nn.Module):
         #pixel_values: [batch_size, channels, height, width] -> [batch_size, num_patches, embed_dim]
         hidden_states = self.embeddings(pixel_values)
 
-        last_hidden_state = self.encoder(input_embeds=hidden_states)
+        last_hidden_state = self.encoder(inputs_embeds=hidden_states)
         last_hidden_state = self.post_layernorm(last_hidden_state)
         return last_hidden_state
 
